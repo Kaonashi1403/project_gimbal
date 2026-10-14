@@ -1,0 +1,55 @@
+#include <stdio.h>
+#include "pico/stdlib.h"
+#include "hardware/timer.h"
+#include "hardware/irq.h"
+
+#define UART0_RX_PIN 17
+#define UART0_TX_PIN 16
+
+#define BAUDRATE 9600
+#define FIRST_LED 2
+#define LEDS_MASK 0x1F << FIRST_LED
+
+const int led_pins[] = {2, 3, 4, 5, 6};
+int num_leds = sizeof(led_pins) / sizeof(led_pins[0]);
+
+void uart_callback() {
+    if(uart_is_readable(uart0)) {
+        int value = uart_getc(uart0);
+        gpio_put_masked(LEDS_MASK, value);
+    }
+}
+
+
+int main() {
+    stdio_init_all();
+    uart_init(uart0, BAUDRATE);
+
+    gpio_set_function(UART0_RX_PIN, GPIO_FUNC_UART);
+    gpio_set_function(UART0_TX_PIN, GPIO_FUNC_UART);
+
+    gpio_init_mask(LEDS_MASK);
+    gpio_set_dir_out_masked(LEDS_MASK);
+
+    irq_set_exclusive_handler(UART0_IRQ, uart_callback);
+    irq_set_enabled(UART0_IRQ, true);
+
+    uart_set_hw_flow (uart0, false, false);
+    uart_set_fifo_enabled (uart0, false);
+    uart_set_irqs_enabled (uart0, true, false);
+
+    for (int i = 0; i < num_leds; i++) {
+        gpio_init(led_pins[i]);
+        gpio_set_dir(led_pins[i], GPIO_OUT);
+    }
+
+
+    
+    while (1) {
+    for(uint8_t i = 0; i <= 31; i++)
+    {
+        uart_putc(uart0, i << FIRST_LED);
+        sleep_ms(250);
+    }
+    }
+}
