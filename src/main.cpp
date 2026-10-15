@@ -75,13 +75,13 @@ int main() {
     // offset = calibrate(&mpu, &ax, &ay, &az);
     PID pid(KP, KI, KD, -90.0f, 90.0f);
     mpu_read_accel_g(&mpu, &ax, &ay, &az);
-    float angle = atan2f(-ax, ay) * (180.0f / M_PI) + offset;
+    float angle = atan2f(-ax, ay) * (180.0f / M_PI) + offset;////
 
     float gyroBias = 0;
     printf("Finding gyro bias...\n");
     for (int i = 0; i < 500; i++) {
-        mpu_read_gyro_dps(&mpu, NULL, NULL, &gz);
-        gyroBias += gz; 
+        mpu_read_gyro_dps(&mpu, NULL, NULL, &gz);////
+        gyroBias += gz; ////
         sleep_ms(2); 
     }
     gyroBias /= 500.0f;
@@ -103,9 +103,9 @@ int main() {
         
         
         float accMag = sqrtf(ax*ax + ay*ay + az*az);
-        float accAngle = atan2f(-ax, ay) * (180.0f / M_PI) + offset;
+        float accAngle = atan2f(-ax, ay) * (180.0f / M_PI) + offset;////
 
-        float gyroRate = -(gz - gyroBias); 
+        float gyroRate = -(gz - gyroBias); ////
         angle += gyroRate * dt;
 
         float err = fabsf(accMag - 1.0f);
@@ -118,7 +118,7 @@ int main() {
         angle += k * diff;
 
         if (trustAcc && fabsf(gyroRate) < 2.0f)
-        gyroBias += 0.001f * (gz - gyroBias);
+        gyroBias += 0.001f * (gz - gyroBias);////
 
         float correction = pid.update(0.0f, angle, gyroRate, dt);
         servo_write_angle(SERVO_PIN, SERVO_CENTER + correction);
