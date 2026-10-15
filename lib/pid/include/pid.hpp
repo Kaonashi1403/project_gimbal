@@ -20,7 +20,7 @@ public:
     PID(float kp, float ki, float kd, float outMin, float outMax);
 
     // Compute the next output. dt = seconds since the previous call (must be > 0).
-    float update(float setpoint, float measurement, float dt);
+    float update(float setpoint, float measurement, float rate, float dt);
 
     // Clear the internal state (integral and derivative memory). Call this when
     // the controller has been off/paused, or after a large jump in the setpoint.
@@ -37,9 +37,7 @@ private:
     float outMin_, outMax_;
 
     float iTerm_ = 0.0f;            // accumulated integral contribution (already multiplied by ki)
-    float prevMeasurement_ = 0.0f;  // for the derivative
     float lastOutput_ = 0.0f;
-    bool  firstRun_ = true;         // true until the first update() call
 };
 
 #endif // PID_HPP

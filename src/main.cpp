@@ -22,7 +22,7 @@ extern "C" {
 #define MPU_ADDR 0x68
 #define SERVO_PIN 15
 
-#define KP 2.5f
+#define KP 1.9f
 #define KI 0.0f
 #define KD 0.0f
 
@@ -45,7 +45,7 @@ float calibrate(const mpu_t *mpu, float *ax, float *ay, float *az) {
     float offset = 0;
     for (int i = 0; i < 100; i++) {
         mpu_read_accel_g(mpu, ax, ay, az);
-        float angle = atan2(*ax, *az);
+        float angle = atan2(*ay, *ax);
         angle = angle*(180/M_PI);
         offset+=(0 - angle);
         sleep_ms(50);
@@ -53,28 +53,47 @@ float calibrate(const mpu_t *mpu, float *ax, float *ay, float *az) {
     return offset/100;
 }
 
+
 int main() {
     stdio_init_all();
+
+
+    servo_init(SERVO_PIN);
+    servo_write_angle(SERVO_PIN, SERVO_CENTER);
+    servo_write_angle(SERVO_PIN, SERVO_CENTER);
+    printf("Setting servo default angle...\n");
+    sleep_ms(3000);
+    
+
+
     spi_init(SPI, BAUDRATE);
     mpu_t mpu;
     mpu_config_t cfg = { SPI, SCK, MOSI, MISO, CS};
     if (!mpu_init_spi(&mpu, &cfg)) printf("MPU not found!\n");
-    servo_init(SERVO_PIN);
-    servo_write_angle(SERVO_PIN, SERVO_CENTER);
-
-    
+    float offset = 0;
     float ax, ay, az, gx, gy, gz;
-    float offset = calibrate(&mpu, &ax, &ay, &az);
+    // offset = calibrate(&mpu, &ax, &ay, &az);
     PID pid(KP, KI, KD, -90.0f, 90.0f);
-    float angle = atan2f(ax, az) * (180.0f / M_PI) + offset;
-    float prev_correction = 0;
+    mpu_read_accel_g(&mpu, &ax, &ay, &az);
+    float angle = atan2f(-ax, ay) * (180.0f / M_PI) + offset;
+
+    float gyroBias = 0;
+    printf("Finding gyro bias...\n");
+    for (int i = 0; i < 500; i++) {
+        mpu_read_gyro_dps(&mpu, NULL, NULL, &gz);
+        gyroBias += gz; 
+        sleep_ms(2); 
+    }
+    gyroBias /= 500.0f;
+    printf("Gyro bias: %f\n", gyroBias);
 
     uint64_t last_us = time_us_64();
     int print_count = 0;
-    servo_write_angle(SERVO_PIN, SERVO_CENTER);
-    printf("Setting servo default angle...\n");
-    sleep_ms(3000);
     while (true) {
+        // mpu_read_accel_g(&mpu, &ax, &ay, &az);
+        // printf("ax: %2f ; ay: %2f ; az: %2f\n", ax, ay, az);
+
+
         uint64_t now_us = time_us_64();
         float dt = (now_us - last_us) / 1e6f;//us to ms
         last_us = now_us;
@@ -83,18 +102,41 @@ int main() {
         mpu_read_gyro_dps(&mpu, &gx, &gy, &gz); 
         
         
-        float accAngle = atan2f(ax, az) * (180.0f / M_PI) + offset;
-        float gyroRate = gy;
-        angle = 0.98f * (angle + gyroRate * dt) + 0.02f * accAngle;
+        float accMag = sqrtf(ax*ax + ay*ay + az*az);
+        float accAngle = atan2f(-ax, ay) * (180.0f / M_PI) + offset;
 
-        float correction = pid.update(0.0f, angle, dt);
-        if (fabs(prev_correction - correction) > 0.6f) servo_write_angle(SERVO_PIN, SERVO_CENTER + correction);
+        float gyroRate = -(gz - gyroBias); 
+        angle += gyroRate * dt;
 
+        float err = fabsf(accMag - 1.0f);
+        bool trustAcc = (err < 0.05f) && (fabsf(gyroRate) < 20.0f);
+        float k = trustAcc ? 0.02f : 0.0f;
+
+        float diff = accAngle - angle;
+        while (diff >  180.0f) diff -= 360.0f;
+        while (diff < -180.0f) diff += 360.0f;
+        angle += k * diff;
+
+        if (trustAcc && fabsf(gyroRate) < 2.0f)
+        gyroBias += 0.001f * (gz - gyroBias);
+
+        float correction = pid.update(0.0f, angle, gyroRate, dt);
+        servo_write_angle(SERVO_PIN, SERVO_CENTER + correction);
+
+        static float gyroOnly = 0;
+        gyroOnly += gyroRate * dt;
         if (++print_count >= 10) { 
-        print_count = 0;
-        printf("angle=%.2f correction=%.2f dt=%.4f\n", angle, correction, dt);
-    }
-        prev_correction = correction;
+            print_count = 0;
+            printf("fused=%.2f gyro=%.2f acc=%.2f mag=%.3f\n", angle, gyroOnly, accAngle, accMag);
+            printf("angle=%.2f correction=%.2f dt=%.4f\n", angle, correction, dt);
+        }
         sleep_ms(5);
     }
+
+    // float Testangle = 90;
+    // while (true) {
+    //     servo_write_angle(SERVO_PIN,Testangle);
+    //     Testangle+= 15;
+    //     sleep_ms(100);
+    // }
 }
